@@ -23,6 +23,7 @@ class MatchParser(BasePage):
         super().__init__(driver)
         self.players = {}
         self.goalkeepers = {}
+        self.new_players = {}
         self.new_data = {}
 
     def open_base_match(self):
@@ -99,32 +100,32 @@ class MatchParser(BasePage):
                 player_count = self.find_elements((
                     By.XPATH, cur_locator.format(player_name)
                 ))[0].text
-                if player_count and cur_locator == players_locator:
-                    scored_goals = int(player_count.split('/')[0])
+                count = int(player_count.split('/')[0])
 
-                    if not self.players.get(player_name):
-                        self.players[player_name] = {
-                            'matches': 0,
-                            'count': 0
-                        }
+                if not self.players.get(player_name) and not self.goalkeepers.get(player_name):
+                    self.new_players[player_name] = {
+                        'matches': 1,
+                        'count': 0 if not count else count
+                    }
+
+                if player_count and cur_locator == players_locator:
                     self.players[player_name]['matches'] += 1
-                    self.players[player_name]['count'] += scored_goals
+                    self.players[player_name]['count'] += count
 
                 elif player_count and cur_locator == goalkeepers_locator:
-                    saved_shots = int(player_count.split('/')[0])
-
                     if not self.goalkeepers.get(player_name):
-                        self.goalkeepers[player_name] = {
-                            'matches': 0,
-                            'count': 0
-                        }
-                    self.goalkeepers[player_name]['matches'] += 1
-                    self.goalkeepers[player_name]['count'] += saved_shots
+                        self.new_players[player_name]['count'] += count
 
+                        self.goalkeepers[player_name] = self.new_players[player_name]
+                        self.new_players.pop(player_name)
+                    else:
+                        self.goalkeepers[player_name]['matches'] += 1
+                        self.goalkeepers[player_name]['count'] += count
             else:
                 cur_locator = goalkeepers_locator
                 print(f"✅ Статистика полевых игроков обновлена")
-
+        for player in list(self.new_players.keys()):
+            self.players[player] = self.new_players[player]
         print(f"✅ Статистика вратарей обновлена")
 
     def clear_and_rewrite_excel(self):
@@ -148,17 +149,17 @@ class MatchParser(BasePage):
                     cell.value = None
 
             # 2. Записываем новые данные
+            # Полевые игроки
             players = list(self.players.keys())
             for i in range(len(players)):
-                # Имя из оригинала + новые числа
                 player_name = players[i]
                 ws[f'A{i + 4}'].value = player_name
                 ws[f'B{i + 4}'].value = self.players[player_name]['matches']
                 ws[f'C{i + 4}'].value = self.players[player_name]['count']
 
+            # Вратари
             goalkeepers = list(self.goalkeepers.keys())
             for i in range(len(goalkeepers)):
-                # Имя из оригинала + новые числа
                 goalkeeper_name = goalkeepers[i]
                 ws[f'A{i + 5 + len(players)}'].value = goalkeeper_name
                 ws[f'B{i + 5 + len(players)}'].value = self.goalkeepers[goalkeeper_name]['matches']
