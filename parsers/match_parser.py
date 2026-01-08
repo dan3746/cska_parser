@@ -100,22 +100,18 @@ class MatchParser(BasePage):
                 player_count = self.find_elements((
                     By.XPATH, cur_locator.format(player_name)
                 ))[0].text
-                count = int(player_count.split('/')[0])
+                count = int(player_count.split('/')[0]) if player_count else 0
 
                 if not self.players.get(player_name) and not self.goalkeepers.get(player_name):
                     self.new_players[player_name] = {
                         'matches': 1,
-                        'count': 0 if not count else count
+                        'count': count,
                     }
-
-                if player_count and cur_locator == players_locator:
+                elif self.players.get(player_name):
                     self.players[player_name]['matches'] += 1
                     self.players[player_name]['count'] += count
-
-                elif player_count and cur_locator == goalkeepers_locator:
+                elif cur_locator == goalkeepers_locator:
                     if not self.goalkeepers.get(player_name):
-                        self.new_players[player_name]['count'] += count
-
                         self.goalkeepers[player_name] = self.new_players[player_name]
                         self.new_players.pop(player_name)
                     else:
@@ -134,8 +130,6 @@ class MatchParser(BasePage):
         2. УДАЛЯЕТ ВСЕ данные с 3-й строки
         3. Записывает НОВЫЕ данные с теми же именами игроков
         4. Сохраняет структуру/форматирование
-
-
         """
 
         try:
@@ -161,9 +155,9 @@ class MatchParser(BasePage):
             goalkeepers = list(self.goalkeepers.keys())
             for i in range(len(goalkeepers)):
                 goalkeeper_name = goalkeepers[i]
-                ws[f'A{i + 5 + len(players)}'].value = goalkeeper_name
-                ws[f'B{i + 5 + len(players)}'].value = self.goalkeepers[goalkeeper_name]['matches']
-                ws[f'C{i + 5 + len(players)}'].value = self.goalkeepers[goalkeeper_name]['count']
+                ws[f'A{i + 6 + len(players)}'].value = goalkeeper_name
+                ws[f'B{i + 6 + len(players)}'].value = self.goalkeepers[goalkeeper_name]['matches']
+                ws[f'C{i + 6 + len(players)}'].value = self.goalkeepers[goalkeeper_name]['count']
 
             wb.save(self.base_stat_path)
 
@@ -202,9 +196,12 @@ class MatchParser(BasePage):
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
-        if result.returncode in [0, 1]:  # robocopy возвращает 1 при успехе
-            print(f"✅ Windows копия: {source_path.name} → {dest_path}")
-            return dest_path
+        if result.returncode in [0, 1]:
+            new_dest = dest_path.parent / source_path.name
+            new_dest.rename(new_dest.parent / new_name)
+            print(f"✅ Скопировано и переименовано:")
+            print(f"   {source_path.name} → {new_name}")
+            return new_dest
         else:
             print(f"❌ robocopy ошибка: {result.stderr}")
             return None

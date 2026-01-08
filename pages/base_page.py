@@ -33,15 +33,22 @@ class BasePage:
 
     def read_data_file(self):
         """
-        Читает все строки из parsed_data.txt в корне проекта
+        Читает НАЗВАНИЯ ВСЕХ файлов из директории архивных файлов в корне проекта
 
         Returns:
-            Список строк из файла
+            Список имён файлов: ['file1.xlsx', 'file2.txt', ...]
         """
-        if self.data_file.exists():
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                return [line.strip() for line in f.readlines()]
-        return []
+
+        # Получаем ВСЕ файлы (не папки)
+        file_names = [
+            file_path.name for file_path in self.archive_dir.iterdir()
+            if file_path.is_file()
+        ]
+
+        # Сортируем для стабильности
+        file_names.sort()
+        print(f"✅ Найдено файлов в {self.archive_dir}: {len(file_names)}")
+        return file_names
 
     def write_to_data_file(self, line: str) -> None:
         """
