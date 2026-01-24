@@ -82,6 +82,9 @@ class MatchParser(BasePage):
         self.click_element((
             By.XPATH, "(//a[normalize-space(text())='Статистика'])[1]"
         ))
+        self.click_element((
+            By.XPATH, "(//a[normalize-space(text())='ЦСКА'])[2]"
+        ))
 
     def add_new_stats(self):
         """
