@@ -1,10 +1,13 @@
-from parsers.match_parser import MatchParser
+from pages.base_page import BASE_SEASON_STATS
+from parsers.match_parser import MatchParser, SeasonsParser
 from fixtures import chrome_driver  # Импорт фикстуры
+
+
 
 
 def test_parse_last_match(chrome_driver):  # Используем фикстуру как тест
     parser = MatchParser(chrome_driver)
-    match_data = parser.open_base_match().get_last_match_data()
+    match_data = parser.open_base_page().get_last_match_data()
     match_date_list = match_data[1].text.split(',')
     match_name = f"{match_data[0].text} - {match_data[3].text}"
     match_date = f"{match_date_list[0]} - {match_date_list[1]}".replace(':', '.')
@@ -24,3 +27,12 @@ def test_parse_last_match(chrome_driver):  # Используем фикстур
     parser.add_new_stats()
     parser.clear_and_rewrite_excel()
     parser.archive_excel_file(file_name)
+
+
+def test_parse_all_time_result(chrome_driver):  # Используем фикстуру как тест
+    parser = SeasonsParser(chrome_driver)
+    match_data = parser.open_base_page(BASE_SEASON_STATS).get_seasons_stats()
+
+    parser.create_excel_file("all_results")
+
+    print(0)

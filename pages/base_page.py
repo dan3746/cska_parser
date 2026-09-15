@@ -4,6 +4,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+BASE_URL = "https://rushandball.ru/teams/1417#schedule"
+BASE_SEASON_STATS = "https://rushandball.ru/teams/1417#stats"
 
 class BasePage:
     def __init__(self, driver):
@@ -60,3 +62,6 @@ class BasePage:
         with open(self.data_file, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
 
+    def open_base_page(self, url=BASE_URL):
+        self.open(url)
+        return self

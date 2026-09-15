@@ -1,15 +1,16 @@
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
 import openpyxl
 from openpyxl.reader.excel import load_workbook
+from openpyxl.workbook import Workbook
 
 from pages.base_page import BasePage
 from selenium.webdriver.common.by import By
 
-BASE_URL = "https://rushandball.ru/teams/1417#schedule"
 
 LAST_MATCH_DATA_LOCATOR = (
     "(//div[contains(@class, 'schedule-game')]//div[@class='promo__game-row']"
@@ -25,10 +26,6 @@ class MatchParser(BasePage):
         self.goalkeepers = {}
         self.new_players = {}
         self.new_data = {}
-
-    def open_base_match(self):
-        self.open(BASE_URL)
-        return self
 
     def get_last_match_data(self):
         # Ваш XPath с ancestor/contains
@@ -57,7 +54,7 @@ class MatchParser(BasePage):
                 cell_goals = sheet.cell(row=row, column=3).value
 
                 # Пропускаем пустые строки и заголовки
-                if cell_name and cell_matches and cell_goals:
+                if cell_name and cell_matches and cell_goals or cell_goals == 0:
                     data[cell_name] = {
                         'matches': int(cell_matches),
                         'count': int(cell_goals),
@@ -99,32 +96,40 @@ class MatchParser(BasePage):
         cur_locator = players_locator
         players = [player.text for player in players_el[:-1]]
         for player_name in players:
+            if players.count(player_name) > 1 and cur_locator == players_locator:
+                continue
             if player_name:
                 player_count = self.find_elements((
                     By.XPATH, cur_locator.format(player_name)
                 ))[0].text
                 count = int(player_count.split('/')[0]) if player_count else 0
 
-                if not self.players.get(player_name) and not self.goalkeepers.get(player_name):
-                    self.new_players[player_name] = {
-                        'matches': 1,
-                        'count': count,
-                    }
-                elif self.players.get(player_name):
-                    self.players[player_name]['matches'] += 1
-                    self.players[player_name]['count'] += count
+                if cur_locator == players_locator:
+                    if not self.players.get(player_name):
+                        self.players[player_name] = {
+                            'matches': 1,
+                            'count': count,
+                        }
+                    elif self.players.get(player_name):
+                        self.players[player_name]['matches'] += 1
+                        self.players[player_name]['count'] += count
+                    else:
+                        raise AttributeError(f"Unknown player name {player_name}")
                 elif cur_locator == goalkeepers_locator:
                     if not self.goalkeepers.get(player_name):
-                        self.goalkeepers[player_name] = self.new_players[player_name]
-                        self.new_players.pop(player_name)
-                    else:
+                        self.goalkeepers[player_name] = {
+                            'matches': 1,
+                            'count': count,
+                        }
+                    elif self.goalkeepers.get(player_name):
                         self.goalkeepers[player_name]['matches'] += 1
                         self.goalkeepers[player_name]['count'] += count
+                else:
+                    raise AttributeError(f"Unknown player name {player_name}")
+
             else:
                 cur_locator = goalkeepers_locator
                 print(f"✅ Статистика полевых игроков обновлена")
-        for player in list(self.new_players.keys()):
-            self.players[player] = self.new_players[player]
         print(f"✅ Статистика вратарей обновлена")
 
     def clear_and_rewrite_excel(self):
@@ -208,3 +213,150 @@ class MatchParser(BasePage):
         else:
             print(f"❌ robocopy ошибка: {result.stderr}")
             return None
+
+
+values = ["minutes", "goals", "assists", "penalties", "earned_penalties", "blocks"]
+player_columns_nums = {
+    "games": 2,
+    "minutes": 5,
+    "goals": 6,
+    "assists": 16,
+    "penalties": 12,
+    "earned_penalties": 18,
+    "blocks": 24,
+}
+goalkeeper_columns_nums = {
+    "games": 2,
+    "saves": 5,
+    "penalty_saves": 11,
+}
+
+class SeasonsParser(BasePage):
+    def __init__(self, driver):
+        super().__init__(driver)
+        self.players = {}
+        self.goalkeepers = {}
+
+    def get_seasons_stats(self):
+        """
+        Получаем статистику по последнему матчу
+        """
+        time.sleep(5)
+
+        while True:
+            players_locator = "(//table)[1]//tr/td[4]/a"
+            players = [player.text for player in self.find_elements((By.XPATH, players_locator))]
+            for player in players:
+                if not self.players.get(player):
+                    self.players[player] = {
+                        "games": 0,
+                        "minutes": 0,
+                        "goals": 0,
+                        "assists": 0,
+                        "penalties": 0,
+                        "earned_penalties": 0,
+                        "blocks": 0,
+                    }
+                for column, column_num in player_columns_nums.items():
+                    column_value_locator = f"//a[normalize-space(text())='{player}']/ancestor::tr/td[{column_num}]"
+                    column_value = self.find_element((
+                        By.XPATH, column_value_locator
+                    )).text
+                    if column_value:
+                        if column in ["goals", "penalties"]:
+                            column_value = column_value.split('/')[0]
+                        self.players[player][column] += int(column_value)
+            print(f"✅ Статистика полевых игроков обновлена")
+
+            goalkeepers_locator = "(//table)[2]//tr/td[4]/a"
+            goalkeepers = [goalkeeper.text for goalkeeper in self.find_elements((By.XPATH, goalkeepers_locator))]
+            for goalkeeper in goalkeepers:
+                if not self.goalkeepers.get(goalkeeper):
+                    self.goalkeepers[goalkeeper] = {
+                        "games": 0,
+                        "saves": 0,
+                        "penalty_saves": 0,
+                    }
+                for column, column_num in goalkeeper_columns_nums.items():
+                    column_value_locator = f"//a[normalize-space(text())='{goalkeeper}']/ancestor::tr/td[{column_num}]"
+                    column_value = self.find_element((
+                        By.XPATH, column_value_locator
+                    )).text
+                    self.goalkeepers[goalkeeper][column] += int(column_value.split('/')[0])
+            print(f"✅ Статистика вратарей обновлена")
+
+
+            cur_season = self.find_element((
+                By.XPATH, '//div[@class="ss-single"]'
+            )).text
+            next_season = [int(year) - 1 for year in cur_season.split('-')]
+            if f"{next_season[0]}-{next_season[1]}" == "2018-2019":
+                break
+            season_locator = '//div[@class="input-wrp"]//div[@aria-haspopup="listbox"]'
+            self.click_element((
+                By.XPATH, season_locator
+            ))
+            time.sleep(5)
+            self.click_element((
+                By.XPATH, f"//div[normalize-space(text())='{next_season[0]}-{next_season[1]}']"
+            ))
+            time.sleep(10)
+
+
+    def create_excel_file(self, new_filename):
+        """
+        Создаёт новый Excel файл в корне проекта с отдельными листами для каждого ключа
+        в self.players и self.goalkeepers. Данные сортируются по значению по убыванию.
+
+        Args:
+            new_filename: Базовое имя файла (без расширения)
+
+        Returns:
+            Path к новому файлу или None при ошибке
+        """
+        # Создаём новую книгу Excel
+        wb = Workbook()
+        # Удаляем лист по умолчанию
+        default_sheet = wb.active
+        wb.remove(default_sheet)
+
+
+        # for player_column in player_columns_nums.keys():
+        #     # Создаём лист с именем (ограничиваем до 31 символа — лимит Excel)
+        #     sheet_name = f"Полевые игроки - {player_column}"
+        #     ws = wb.create_sheet(title=sheet_name)
+        #
+        #     # Заголовок таблицы
+        #     ws.append(["ФИО игрока", player_column])
+        #
+        #     sorted_data = sorted(self.players.items(), key=lambda item: item[1][player_column], reverse=True)
+        #     result = [(player, stats[player_column]) for player, stats in sorted_data]
+        #
+        #     for player_name, value in result:
+        #         ws.append([player_name, value])
+
+        for goalkeeper_columns in goalkeeper_columns_nums.keys():
+            # Создаём лист с именем (ограничиваем до 31 символа — лимит Excel)
+            sheet_name = f"Вратари - {goalkeeper_columns}"
+            ws = wb.create_sheet(title=sheet_name)
+
+            # Заголовок таблицы
+            ws.append(["ФИО игрока", goalkeeper_columns])
+
+            sorted_data = sorted(self.goalkeepers.items(), key=lambda item: item[1][goalkeeper_columns], reverse=True)
+            result = [(player, stats[goalkeeper_columns]) for player, stats in sorted_data]
+
+            for player_name, value in result:
+                ws.append([player_name, value])
+
+        # Сохраняем файл в корне проекта (папка, где находится текущий скрипт)
+        root_dir = Path(__file__).parent
+        file_path = root_dir / f"{new_filename}.xlsx"
+        wb.save(file_path)
+
+        print(f"✅ Создан Excel файл:")
+        print(f"   {file_path}")
+        print(f"   Листов: {len(wb.sheetnames)}")
+        print(f"   Листы: {wb.sheetnames}")
+
+        return file_path
